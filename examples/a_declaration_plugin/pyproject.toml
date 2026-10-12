@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "school-ai-declaration"
+version = "0.1.0"
+description = "Третий анализатор для защиты ЛР 1: проверка AI-декларации"
+requires-python = ">=3.11"
+dependencies = ["school-intake"]
+
+# Вот и всё подключение: имя в группе school.analyzers -> фабрика анализатора.
+[project.entry-points."school.analyzers"]
+ai_declaration = "school_ai_declaration:AIDeclarationAnalyzer"
+
+[tool.setuptools.packages.find]
+where = ["src"]
