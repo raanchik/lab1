@@ -1,0 +1,108 @@
+Metadata-Version: 2.4
+Name: school-intake
+Version: 0.1.0
+Summary: ЛР 1: приём сдач лабораторных и расширяемые анализаторы (вариант Python Core)
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Provides-Extra: dev
+Requires-Dist: pytest>=7; extra == "dev"
+Requires-Dist: mypy>=1.5; extra == "dev"
+
+# ЛР 1 — Приём работ и расширяемые анализаторы (Python Core)
+
+Пакет `school` принимает сдачи лабораторных из JSONL, валидирует их, обрабатывает
+дубликаты и конфликты и запускает заменяемые анализаторы. Принятый код **не запускается**.
+
+Подробное объяснение решений и ответы на вопросы защиты — в [`docs/GUIDE.md`](docs/GUIDE.md).
+
+## Установка в чистое окружение
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"            # пакет + pytest + mypy
+```
+
+Требуется Python ≥ 3.11. Сторонних зависимостей у самого пакета нет.
+
+## Команды
+
+```bash
+# Импорт: печатает JSON {accepted, duplicate, errors}
+school import data/submissions.jsonl                 # всё принято, exit 0
+school import data/invalid_submissions.jsonl         # объяснимые ошибки по строкам, exit 1
+school import data/demo_duplicate_conflict.jsonl     # дубликат + конфликт
+
+# Импорт + анализ
+school analyze data/submissions.jsonl --assignments data/assignments.json
+school analyze data/submissions.jsonl --assignments data/assignments.json --analyzer template
+
+# То же без установки команды
+python -m school import data/submissions.jsonl
+```
+
+Коды выхода: `0` — без ошибок, `1` — есть ошибки строк или анализа, `2` — команду
+выполнить нельзя (нет файла, неизвестный анализатор, битый assignments.json).
+
+## Проверки
+
+```bash
+pytest                      # все тесты
+pytest -v tests/test_sources_contract.py   # контрактные тесты источников
+mypy src                    # статическая проверка типов (strict)
+python scripts/bench.py --n 5000 --repeat 5   # замеры для отчёта
+```
+
+## Третий анализатор (сценарий защиты)
+
+```bash
+pip install -e examples/ai_declaration_plugin
+school analyze data/submissions.jsonl --assignments data/assignments.json --plugins
+```
+
+Плагин регистрируется через entry point `school.analyzers`; центральный сервис не меняется.
+
+## Структура
+
+```
+src/school/
+  errors.py        ErrorCode, ErrorDetail(code, field, message), иерархия исключений
+  models.py        Submission, AIDeclaration, Assignment, Evidence, AnalysisReport (frozen dataclass)
+  parser.py        parse_json_line -> FormatError, validate_submission -> SchemaError
+  lines.py         единая нумерация строк
+  repository.py    протоколы хранилищ + in-memory реализации
+  sources.py       RawRecord, JsonlSubmissionSource, InMemorySubmissionSource (контекстные менеджеры)
+  intake.py        IntakeService (accepted / duplicate / conflict), import_records
+  analyzers/       Protocol Analyzer, AnalysisContext, LengthAnalyzer, TemplateAnalyzer, реестр
+  analysis.py      AnalysisService: выбор по реестру, изоляция ошибок, проверка отчёта
+  timing.py        типизированный декоратор @timed
+  app.py           корень композиции
+  cli.py           тонкий адаптер командной строки
+tests/             тесты (pytest)
+data/              синтетические данные
+examples/          плагин-анализатор AI-декларации
+scripts/bench.py   замеры
+```
+
+## Формат входной записи
+
+```json
+{
+  "submission_id": "sub-001",
+  "student_id": "student-01",
+  "assignment_id": "lab-1",
+  "submitted_at": "2026-09-14T10:00:00+03:00",
+  "text": "Отчёт...",
+  "code": "def f(): ...",
+  "ai_declaration": {"used": true, "description": "что и как делал AI", "tools": ["ChatGPT"]}
+}
+```
+
+Если формат в памятке курса отличается, правки нужны только в `models.py` и `parser.py`.
+
+## Известные ограничения
+
+- Хранилище in-memory: после завершения процесса данные не сохраняются.
+- TemplateAnalyzer ищет только точные совпадения строк (пробел в конце строки уже не совпадение).
+- Хеш учитывает запись времени буквально: `10:00+03:00` и `07:00Z` дают разные хеши.
+- Анализ синхронный (конкурентный адаптер — в ЛР 3).
